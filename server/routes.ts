@@ -1,25 +1,85 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage } from "./storage-mongodb";
 import bcrypt from "bcrypt";
 import Stripe from "stripe";
 import session from "express-session";
 import { z } from "zod";
-import {
-  insertUserSchema,
-  insertProductSchema,
-  insertCategorySchema,
-  insertCartItemSchema,
-  insertOrderSchema,
-  insertAddressSchema,
-  insertReviewSchema,
-  insertProductImageSchema,
-  insertProductVariantSchema,
-} from "@shared/schema";
+import { Types } from "mongoose";
+
+// Define schemas for request validation
+const userSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  name: z.string().min(2),
+  role: z.enum(['CUSTOMER', 'ADMIN']).default('CUSTOMER'),
+});
+
+const productSchema = z.object({
+  name: z.string().min(2),
+  slug: z.string().min(2),
+  description: z.string().min(10),
+  category: z.string().refine(val => Types.ObjectId.isValid(val), {
+    message: "Invalid category ID"
+  }),
+  basePrice: z.number().min(0),
+  stock: z.number().int().min(0).default(0),
+  isActive: z.boolean().default(true),
+  isFeatured: z.boolean().default(false),
+  images: z.array(z.string()).optional(),
+  weight: z.number().optional(),
+  ingredients: z.array(z.string()).optional(),
+  shelfLife: z.number().optional(),
+});
+
+const categorySchema = z.object({
+  name: z.string().min(2),
+  slug: z.string().min(2),
+  description: z.string().optional(),
+  imageUrl: z.string().optional(),
+});
+
+// Simplified schemas for other models
+const cartItemSchema = z.object({
+  productId: z.string(),
+  quantity: z.number().int().min(1),
+});
+
+const orderSchema = z.object({
+  items: z.array(z.object({
+    productId: z.string(),
+    quantity: z.number().int().min(1),
+    price: z.number().min(0),
+  })),
+  total: z.number().min(0),
+  status: z.string().default('PENDING'),
+  shippingAddress: z.object({
+    street: z.string(),
+    city: z.string(),
+    state: z.string(),
+    postalCode: z.string(),
+    country: z.string(),
+  }),
+});
+
+const addressSchema = z.object({
+  street: z.string(),
+  city: z.string(),
+  state: z.string(),
+  postalCode: z.string(),
+  country: z.string(),
+  isDefault: z.boolean().default(false),
+});
+
+const reviewSchema = z.object({
+  productId: z.string(),
+  rating: z.number().min(1).max(5),
+  comment: z.string().min(10),
+});
 
 // Initialize Stripe if keys are available
 const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" })
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-09-30.clover" })
   : null;
 
 // Session configuration
@@ -64,7 +124,19 @@ async function requireAdmin(req: any, res: any, next: any) {
   next();
 }
 
+// Import the connectDB function
+import { connectDB } from './db-mongodb';
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Connect to MongoDB before setting up routes
+  try {
+    await connectDB();
+    console.log('✅ MongoDB connected successfully');
+  } catch (error) {
+    console.error('❌ Failed to connect to MongoDB:', error);
+    process.exit(1);
+  }
+
   app.use(sessionMiddleware);
 
   // ==================== Authentication Routes ====================

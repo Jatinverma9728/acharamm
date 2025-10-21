@@ -1,32 +1,18 @@
-// Database connection using Drizzle ORM
-// Uses SQLite for local development and PostgreSQL (Neon) for production
+// MongoDB connection setup
+import mongoose from 'mongoose';
+import connectDB from './db-mongodb';
+import * as models from './models';
 
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import Database from 'better-sqlite3';
-import * as schema from "@shared/sqlite-schema";
+// Connect to MongoDB
+connectDB().catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
+});
 
-// For local development with SQLite
-const sqlite = new Database('dev.db');
+// Export mongoose connection and models
+export { mongoose, models };
 
-// Enable foreign key constraints
-sqlite.pragma('foreign_keys = ON');
-
-// Create the database client with schema
-export const db = drizzle(sqlite, { schema });
-
-// Uncomment this section and comment out the SQLite configuration above for production with PostgreSQL
-/*
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle as pgDrizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
-
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
-
-neonConfig.webSocketConstructor = ws;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = pgDrizzle({ client: pool, schema });
-*/
+export const db = {
+  connection: mongoose.connection,
+  ...models,
+};
